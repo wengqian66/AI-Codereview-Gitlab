@@ -16,6 +16,7 @@ class QwenClient(BaseClient):
 
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         self.default_model = os.getenv("QWEN_API_MODEL", "qwen-coder-plus")
+        self.extra_body={"enable_thinking": False}
 
     def completions(self,
                     messages: List[Dict[str, str]],
@@ -25,5 +26,6 @@ class QwenClient(BaseClient):
         completion = self.client.chat.completions.create(
             model=model,
             messages=messages,
+            extra_body=self.extra_body,
         )
         return completion.choices[0].message.content
