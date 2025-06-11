@@ -2,7 +2,7 @@ import os
 import re
 import time
 from urllib.parse import urljoin
-
+import fnmatch
 import requests
 
 from biz.utils.log import logger
@@ -15,7 +15,7 @@ def filter_changes(changes: list):
     # 从环境变量中获取支持的文件扩展名
     supported_extensions = os.getenv('SUPPORTED_EXTENSIONS', '.java,.py,.php').split(',')
 
-    filter_deleted_files_changes = [change for change in changes if change.get("deleted_file") == False]
+    filter_deleted_files_changes = [change for change in changes if not change.get("deleted_file")]
 
     # 过滤 `new_path` 以支持的扩展名结尾的元素, 仅保留diff和new_path字段
     filtered_changes = [
@@ -45,7 +45,6 @@ def slugify_url(original_url: str) -> str:
     target = target.rstrip('_')
 
     return target
-
 
 
 class MergeRequestHandler:
@@ -145,6 +144,24 @@ class MergeRequestHandler:
         else:
             logger.error(f"Failed to add note: {response.status_code}")
             logger.error(response.text)
+
+    def target_branch_protected(self) -> bool:
+        url = urljoin(f"{self.gitlab_url}/",
+                      f"api/v4/projects/{self.project_id}/protected_branches")
+        headers = {
+            'Private-Token': self.gitlab_token,
+            'Content-Type': 'application/json'
+        }
+        response = requests.get(url, headers=headers, verify=False)
+        logger.debug(f"Get protected branches response from gitlab: {response.status_code}, {response.text}")
+        # 检查请求是否成功
+        if response.status_code == 200:
+            data = response.json()
+            target_branch = self.webhook_data['object_attributes']['target_branch']
+            return any(fnmatch.fnmatch(target_branch, item['name']) for item in data)
+        else:
+            logger.warn(f"Failed to get protected branches: {response.status_code}, {response.text}")
+            return False
 
 
 class PushHandler:

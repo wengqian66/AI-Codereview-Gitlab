@@ -66,10 +66,15 @@ def handle_merge_request_event(webhook_data: dict, gitlab_token: str, gitlab_url
     :param gitlab_url_slug:
     :return:
     '''
+    merge_review_only_protected_branches = os.environ.get('MERGE_REVIEW_ONLY_PROTECTED_BRANCHES_ENABLED', '0') == '1'
     try:
         # 解析Webhook数据
         handler = MergeRequestHandler(webhook_data, gitlab_token, gitlab_url)
         logger.info('Merge Request Hook event received')
+        # 如果开启了仅review projected branches的，判断当前目标分支是否为projected branches
+        if merge_review_only_protected_branches and not handler.target_branch_protected():
+            logger.info("Merge Request target branch not match protected branches, ignored.")
+            return
 
         if handler.action not in ['open', 'update']:
             logger.info(f"Merge Request Hook event, action={handler.action}, ignored.")
@@ -172,10 +177,15 @@ def handle_github_pull_request_event(webhook_data: dict, github_token: str, gith
     :param github_url_slug:
     :return:
     '''
+    merge_review_only_protected_branches = os.environ.get('MERGE_REVIEW_ONLY_PROTECTED_BRANCHES_ENABLED', '0') == '1'
     try:
         # 解析Webhook数据
         handler = GithubPullRequestHandler(webhook_data, github_token, github_url)
         logger.info('GitHub Pull Request event received')
+        # 如果开启了仅review projected branches的，判断当前目标分支是否为projected branches
+        if merge_review_only_protected_branches and not handler.target_branch_protected():
+            logger.info("Merge Request target branch not match protected branches, ignored.")
+            return
 
         if handler.action not in ['opened', 'synchronize']:
             logger.info(f"Pull Request Hook event, action={handler.action}, ignored.")
