@@ -1,10 +1,9 @@
-import json
 import os
 import re
 import time
 
 import requests
-
+import fnmatch
 from biz.utils.log import logger
 
 
@@ -176,6 +175,22 @@ class PullRequestHandler:
         else:
             logger.error(f"Failed to add comment: {response.status_code}")
             logger.error(response.text)
+
+    def target_branch_protected(self) -> bool:
+        url = f"https://api.github.com/repos/{self.repo_full_name}/branches?protected=true"
+        headers = {
+            'Authorization': f'token {self.github_token}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            target_branch = self.webhook_data['pull_request']['base']['ref']
+            return any(fnmatch.fnmatch(target_branch, item['name']) for item in data)
+        else:
+            logger.warn(f"Failed to get protected branches: {response.status_code}, {response.text}")
+            return False
 
 
 class PushHandler:
