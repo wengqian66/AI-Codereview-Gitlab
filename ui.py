@@ -191,19 +191,24 @@ def generate_author_code_line_chart(df):
     if 'additions' not in df.columns or 'deletions' not in df.columns:
         st.warning("无法生成代码行数图表：缺少必要的数据列")
         return
-        
-    # 计算每个人员的代码行数（additions + deletions）
-    df['total_lines'] = df['additions'] + df['deletions']
-    author_code_lines = df.groupby('author')['total_lines'].sum().reset_index()
-    author_code_lines.columns = ['author', 'code_lines']
+
+    # 计算每个人员的代码行数
+    author_code_lines_add = df.groupby('author')['additions'].sum().reset_index()
+    author_code_lines_add.columns = ['author', 'additions']
+    author_code_lines_del = df.groupby('author')['deletions'].sum().reset_index()
+    author_code_lines_del.columns = ['author', 'deletions']
 
     # 显示代码行数柱状图
     fig3, ax3 = plt.subplots(figsize=(10, 6))
-    colors = plt.colormaps['Set3'].resampled(len(author_code_lines))
     ax3.bar(
-        author_code_lines['author'],
-        author_code_lines['code_lines'],
-        color=[colors(i) for i in range(len(author_code_lines))]
+        author_code_lines_add['author'],
+        author_code_lines_add['additions'],
+        color=(0.7, 1, 0.7)
+    )
+    ax3.bar(
+        author_code_lines_del['author'],
+        -author_code_lines_del['deletions'],
+        color=(1, 0.7, 0.7)
     )
     plt.xticks(rotation=45, ha='right', fontsize=26)
     plt.tight_layout()
@@ -280,7 +285,7 @@ def main_page():
 
             row5, row6, row7, row8 = st.columns(4)
             with row5:
-                st.markdown("<div style='text-align: center;'><b>人员代码变更总行数(增加+删除)</b></div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align: center;'><b>人员代码变更行数</b></div>", unsafe_allow_html=True)
                 # 只有当 additions 和 deletions 列都存在时才显示代码行数图表
                 if 'additions' in df.columns and 'deletions' in df.columns:
                     generate_author_code_line_chart(df)
