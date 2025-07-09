@@ -28,7 +28,7 @@ USER_CREDENTIALS = {
 }
 
 # 用于生成和验证token的密钥
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = os.getenv("SECRET_KEY", "fac8cf149bdd616c07c1a675c4571ccacc40d7f7fe16914cfe0f9f9d966bb773")
 
 # 初始化cookie管理器
 cookies = CookieManager()
