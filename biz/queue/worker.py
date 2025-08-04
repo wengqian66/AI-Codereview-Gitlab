@@ -7,6 +7,7 @@ from biz.event.event_manager import event_manager
 from biz.gitlab.webhook_handler import filter_changes, MergeRequestHandler, PushHandler
 from biz.github.webhook_handler import filter_changes as filter_github_changes, PullRequestHandler as GithubPullRequestHandler, PushHandler as GithubPushHandler
 from biz.utils.code_reviewer import CodeReviewer
+from biz.utils.rag_code_reviewer import RAGCodeReviewer
 from biz.utils.im import notifier
 from biz.utils.log import logger
 
@@ -19,45 +20,55 @@ def handle_push_event(webhook_data: dict, gitlab_token: str, gitlab_url: str, gi
         logger.info('Push Hook event received')
         commits = handler.get_push_commits()
         if not commits:
-            logger.error('Failed to get commits')
+            logger.info('No commits found in push event (likely branch creation/deletion)')
             return
 
         review_result = None
         score = 0
-        additions = 0
-        deletions = 0
+        should_record = False  # 是否应该记录到数据库
+        
         if push_review_enabled:
             # 获取PUSH的changes
             changes = handler.get_push_changes()
             logger.info('changes: %s', changes)
             changes = filter_changes(changes)
+            
             if not changes:
                 logger.info('未检测到PUSH代码的修改,修改文件可能不满足SUPPORTED_EXTENSIONS。')
-            review_result = "关注的文件没有修改"
-
-            if len(changes) > 0:
+                review_result = "关注的文件没有修改"
+                # 如果没有代码变更，不记录到数据库
+                should_record = False
+            else:
+                should_record = True  # 有代码变更才记录
                 commits_text = ';'.join(commit.get('message', '').strip() for commit in commits)
-                review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
-                score = CodeReviewer.parse_review_score(review_text=review_result)
-                for item in changes:
-                    additions += item['additions']
-                    deletions += item['deletions']
-            # 将review结果提交到Gitlab的 notes
-            handler.add_push_notes(f'Auto Review Result: \n{review_result}')
+                # 使用RAG增强的代码审查器
+                enable_rag = os.environ.get('ENABLE_RAG', '1') == '1'
+                if enable_rag:
+                    reviewer = RAGCodeReviewer()
+                    review_result = reviewer.review_and_strip_code(str(changes), commits_text)
+                    score = reviewer.parse_review_score(review_text=review_result)
+                else:
+                    review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
+                    score = CodeReviewer.parse_review_score(review_text=review_result)
+                # 将review结果提交到Gitlab的 notes
+                handler.add_push_notes(f'Auto Review Result: \n{review_result}')
 
-        event_manager['push_reviewed'].send(PushReviewEntity(
-            project_name=webhook_data['project']['name'],
-            author=webhook_data['user_username'],
-            branch=webhook_data['project']['default_branch'],
-            updated_at=int(datetime.now().timestamp()),  # 当前时间
-            commits=commits,
-            score=score,
-            review_result=review_result,
-            url_slug=gitlab_url_slug,
-            webhook_data=webhook_data,
-            additions=additions,
-            deletions=deletions,
-        ))
+        # 只有在有代码变更时才记录到数据库
+        if should_record:
+            # 获取第一个commit的URL作为推送记录的URL
+            push_url = commits[0].get('url', '') if commits else ''
+            
+            event_manager['push_reviewed'].send(PushReviewEntity(
+                project_name=webhook_data['project']['name'],
+                author=webhook_data['user_username'],
+                branch=webhook_data['project']['default_branch'],
+                updated_at=int(datetime.now().timestamp()),  # 当前时间
+                commits=commits,
+                score=score,
+                review_result=review_result,
+                url_slug=gitlab_url_slug,
+                url=push_url,
+            ))
 
     except Exception as e:
         error_message = f'服务出现未知错误: {str(e)}\n{traceback.format_exc()}'
@@ -74,15 +85,10 @@ def handle_merge_request_event(webhook_data: dict, gitlab_token: str, gitlab_url
     :param gitlab_url_slug:
     :return:
     '''
-    merge_review_only_protected_branches = os.environ.get('MERGE_REVIEW_ONLY_PROTECTED_BRANCHES_ENABLED', '0') == '1'
     try:
         # 解析Webhook数据
         handler = MergeRequestHandler(webhook_data, gitlab_token, gitlab_url)
         logger.info('Merge Request Hook event received')
-        # 如果开启了仅review projected branches的，判断当前目标分支是否为projected branches
-        if merge_review_only_protected_branches and not handler.target_branch_protected():
-            logger.info("Merge Request target branch not match protected branches, ignored.")
-            return
 
         if handler.action not in ['open', 'update']:
             logger.info(f"Merge Request Hook event, action={handler.action}, ignored.")
@@ -96,12 +102,6 @@ def handle_merge_request_event(webhook_data: dict, gitlab_token: str, gitlab_url
         if not changes:
             logger.info('未检测到有关代码的修改,修改文件可能不满足SUPPORTED_EXTENSIONS。')
             return
-        # 统计本次新增、删除的代码总数
-        additions = 0
-        deletions = 0
-        for item in changes:
-            additions += item.get('additions', 0)
-            deletions += item.get('deletions', 0)
 
         # 获取Merge Request的commits
         commits = handler.get_merge_request_commits()
@@ -110,8 +110,16 @@ def handle_merge_request_event(webhook_data: dict, gitlab_token: str, gitlab_url
             return
 
         # review 代码
-        commits_text = ';'.join(commit['title'] for commit in commits)
-        review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
+        commits_text = ';'.join(commit['message'] for commit in commits)
+        # 使用RAG增强的代码审查器
+        enable_rag = os.environ.get('ENABLE_RAG', '1') == '1'
+        if enable_rag:
+            reviewer = RAGCodeReviewer()
+            review_result = reviewer.review_and_strip_code(str(changes), commits_text)
+            score = reviewer.parse_review_score(review_text=review_result)
+        else:
+            review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
+            score = CodeReviewer.parse_review_score(review_text=review_result)
 
         # 将review结果提交到Gitlab的 notes
         handler.add_merge_request_notes(f'Auto Review Result: \n{review_result}')
@@ -125,13 +133,10 @@ def handle_merge_request_event(webhook_data: dict, gitlab_token: str, gitlab_url
                 target_branch=webhook_data['object_attributes']['target_branch'],
                 updated_at=int(datetime.now().timestamp()),
                 commits=commits,
-                score=CodeReviewer.parse_review_score(review_text=review_result),
+                score=score,
                 url=webhook_data['object_attributes']['url'],
                 review_result=review_result,
                 url_slug=gitlab_url_slug,
-                webhook_data=webhook_data,
-                additions=additions,
-                deletions=deletions,
             )
         )
 
@@ -152,8 +157,6 @@ def handle_github_push_event(webhook_data: dict, github_token: str, github_url: 
 
         review_result = None
         score = 0
-        additions = 0
-        deletions = 0
         if push_review_enabled:
             # 获取PUSH的changes
             changes = handler.get_push_changes()
@@ -165,14 +168,21 @@ def handle_github_push_event(webhook_data: dict, github_token: str, github_url: 
 
             if len(changes) > 0:
                 commits_text = ';'.join(commit.get('message', '').strip() for commit in commits)
-                review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
-                score = CodeReviewer.parse_review_score(review_text=review_result)
-                for item in changes:
-                    additions += item.get('additions', 0)
-                    deletions += item.get('deletions', 0)
+                # 使用RAG增强的代码审查器
+                enable_rag = os.environ.get('ENABLE_RAG', '1') == '1'
+                if enable_rag:
+                    reviewer = RAGCodeReviewer()
+                    review_result = reviewer.review_and_strip_code(str(changes), commits_text)
+                    score = reviewer.parse_review_score(review_text=review_result)
+                else:
+                    review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
+                    score = CodeReviewer.parse_review_score(review_text=review_result)
             # 将review结果提交到GitHub的 notes
             handler.add_push_notes(f'Auto Review Result: \n{review_result}')
 
+        # 获取第一个commit的URL作为推送记录的URL
+        push_url = commits[0].get('url', '') if commits else ''
+        
         event_manager['push_reviewed'].send(PushReviewEntity(
             project_name=webhook_data['repository']['name'],
             author=webhook_data['sender']['login'],
@@ -182,9 +192,7 @@ def handle_github_push_event(webhook_data: dict, github_token: str, github_url: 
             score=score,
             review_result=review_result,
             url_slug=github_url_slug,
-            webhook_data=webhook_data,
-            additions=additions,
-            deletions=deletions,
+            url=push_url,
         ))
 
     except Exception as e:
@@ -202,15 +210,10 @@ def handle_github_pull_request_event(webhook_data: dict, github_token: str, gith
     :param github_url_slug:
     :return:
     '''
-    merge_review_only_protected_branches = os.environ.get('MERGE_REVIEW_ONLY_PROTECTED_BRANCHES_ENABLED', '0') == '1'
     try:
         # 解析Webhook数据
         handler = GithubPullRequestHandler(webhook_data, github_token, github_url)
         logger.info('GitHub Pull Request event received')
-        # 如果开启了仅review projected branches的，判断当前目标分支是否为projected branches
-        if merge_review_only_protected_branches and not handler.target_branch_protected():
-            logger.info("Merge Request target branch not match protected branches, ignored.")
-            return
 
         if handler.action not in ['opened', 'synchronize']:
             logger.info(f"Pull Request Hook event, action={handler.action}, ignored.")
@@ -224,12 +227,6 @@ def handle_github_pull_request_event(webhook_data: dict, github_token: str, gith
         if not changes:
             logger.info('未检测到有关代码的修改,修改文件可能不满足SUPPORTED_EXTENSIONS。')
             return
-        # 统计本次新增、删除的代码总数
-        additions = 0
-        deletions = 0
-        for item in changes:
-            additions += item.get('additions', 0)
-            deletions += item.get('deletions', 0)
 
         # 获取Pull Request的commits
         commits = handler.get_pull_request_commits()
@@ -256,10 +253,7 @@ def handle_github_pull_request_event(webhook_data: dict, github_token: str, gith
                 score=CodeReviewer.parse_review_score(review_text=review_result),
                 url=webhook_data['pull_request']['html_url'],
                 review_result=review_result,
-                url_slug=github_url_slug,
-                webhook_data=webhook_data,
-                additions=additions,
-                deletions=deletions,
+                url_slug=github_url_slug
             ))
 
     except Exception as e:
