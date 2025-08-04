@@ -1,0 +1,49 @@
+# 内置知识库配置
+# 配置内置技术文档和最佳实践
+
+builtin_documents:
+  - title: "HTML编码规范"
+    file: "docs/builtin/html_standards.md"
+    tags: ["html", "frontend", "coding-standards"]
+    description: "HTML开发的编码规范，包括语义化标签、可访问性、SEO优化等"
+    
+  - title: "CSS编码规范"
+    file: "docs/builtin/css_standards.md"
+    tags: ["css", "frontend", "coding-standards"]
+    description: "CSS开发的编码规范，包括命名规范、响应式设计、性能优化等"
+    
+  - title: "JavaScript编码规范"
+    file: "docs/builtin/javascript_standards.md"
+    tags: ["javascript", "frontend", "coding-standards"]
+    description: "JavaScript开发的编码规范，包括ES6+特性、函数式编程、性能优化等"
+    
+  - title: "Java编码规范"
+    file: "docs/builtin/java_standards.md"
+    tags: ["java", "backend", "coding-standards"]
+    description: "Java开发的编码规范，包括SOLID原则、并发编程、性能优化等"
+    
+  - title: "Python编码规范"
+    file: "docs/builtin/python_standards.md"
+    tags: ["python", "backend", "coding-standards"]
+    description: "Python开发的编码规范，包括PEP 8、类型注解、最佳实践等"
+    
+  - title: "C++编码规范"
+    file: "docs/builtin/cpp_standards.md"
+    tags: ["cpp", "backend", "coding-standards"]
+    description: "C++开发的编码规范，包括内存管理、RAII、并发编程等"
+    
+  - title: "Go编码规范"
+    file: "docs/builtin/go_standards.md"
+    tags: ["go", "backend", "coding-standards"]
+    description: "Go开发的编码规范，包括并发安全、错误处理、接口设计等"
+
+# 配置参数
+settings:
+  # 是否启用内置知识库
+  enabled: true
+  
+  # 自动初始化（首次启动时加载内置文档）
+  auto_init: true
+  
+  # 文档编码格式
+  encoding: "utf-8" 
