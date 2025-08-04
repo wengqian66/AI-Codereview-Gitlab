@@ -1,4 +1,3 @@
-Flask==3.0.3
 APScheduler==3.10.4
 Flask==3.0.3
 httpx[socks]
@@ -12,8 +11,21 @@ pathspec==0.12.1
 PyMySQL==1.1.1
 python-gitlab==5.6.0
 requests==2.32.3
+rq==2.1.0
 spark-ai-python==0.4.5
 streamlit==1.42.2
+streamlit-cookies-manager==0.2.0
 tiktoken==0.9.0
 zhipuai==2.1.5.20230904
-rq==2.1.0
+PyYAML==6.0.1
+
+# RAG相关依赖
+chromadb==0.4.15
+sentence-transformers==2.2.2
+langchain==0.1.0
+langchain-community==0.0.10
+PyPDF2==3.0.1
+python-docx==0.8.11
+markdown==3.5.1
+beautifulsoup4==4.12.2
+faiss-cpu==1.7.4
