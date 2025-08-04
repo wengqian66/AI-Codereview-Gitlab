@@ -10,6 +10,7 @@ from biz.utils.log import logger
 
 class DeepSeekClient(BaseClient):
     def __init__(self, api_key: str = None):
+        super().__init__()  # 调用父类初始化
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.base_url = os.getenv("DEEPSEEK_API_BASE_URL", "https://api.deepseek.com")
         if not self.api_key:
@@ -21,14 +22,25 @@ class DeepSeekClient(BaseClient):
     def completions(self,
                     messages: List[Dict[str, str]],
                     model: Optional[str] | NotGiven = NOT_GIVEN,
+                    temperature: Optional[float] | NotGiven = NOT_GIVEN,
                     ) -> str:
         try:
             model = model or self.default_model
-            logger.debug(f"Sending request to DeepSeek API. Model: {model}, Messages: {messages}")
+            temperature = temperature if temperature is not NOT_GIVEN else self.default_temperature
+            
+            # 处理None值，使用默认温度
+            if temperature is None:
+                temperature = self.default_temperature
+            
+            # 确保温度值在有效范围内
+            temperature = max(0.0, min(2.0, temperature))
+            
+            logger.debug(f"Sending request to DeepSeek API. Model: {model}, Temperature: {temperature}, Messages: {messages}")
             
             completion = self.client.chat.completions.create(
                 model=model,
-                messages=messages
+                messages=messages,
+                temperature=temperature
             )
             
             if not completion or not completion.choices:
