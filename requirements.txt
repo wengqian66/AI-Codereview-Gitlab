@@ -29,3 +29,5 @@ python-docx==0.8.11
 markdown==3.5.1
 beautifulsoup4==4.12.2
 faiss-cpu==1.7.4
+torch>=2.8.0 # not directly required, pinned by Snyk to avoid a vulnerability
+transformers>=4.53.0 # not directly required, pinned by Snyk to avoid a vulnerability
